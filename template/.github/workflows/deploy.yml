@@ -1,0 +1,62 @@
+# Production deploys run only here: test -> deploy -> verify the live commit.
+# Set the repository secret DEPLOY_TOKEN and the repository variable VERSION_URL.
+# The deploy token exists only in CI, never on developer machines or in agent shells.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Hourly drift check: fails if production stops serving the latest main commit.
+    - cron: '17 * * * *'
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: ${{ github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    needs: test
+    if: ${{ github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # Replace with your provider's deploy command. Keep the guard in front of it:
+      #   "deploy": "node scripts/guard-local-deploy.mjs && <your deploy command>"
+      - run: npm run deploy
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+
+  verify:
+    needs: deploy
+    # Runs after a deploy, and alone on the hourly schedule.
+    if: ${{ always() && (needs.deploy.result == 'success' || github.event_name == 'schedule') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '22'
+      - name: Production serves this commit
+        run: node scripts/verify-deploy.mjs --url "$VERSION_URL" --sha "$GITHUB_SHA" --consecutive 3 --timeout 900
+        env:
+          VERSION_URL: ${{ vars.VERSION_URL }}

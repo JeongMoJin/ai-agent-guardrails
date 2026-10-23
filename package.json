@@ -1,0 +1,14 @@
+{
+  "name": "ai-agent-guardrails",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rules and deploy gates for shipping production software with AI coding agents",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}
